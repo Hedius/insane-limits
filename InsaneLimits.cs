@@ -4686,6 +4686,18 @@ public interface DataDictionaryInterface
                 fail since the cache is not available and this setting is False.
                 </blockquote>
           </li>
+          <li><blockquote><b>use_battlelog_proxy</b><br />
+                <i>True</i> - Send requests to web services over a proxy.<br />
+                <i>False</i> - Do not use a proxy.<br />
+                <br />
+                </blockquote>
+          </li>
+          <li><blockquote><b>proxy_url</b><br />
+                <i>(string, url)</i> - Format: http://IP:PORT - http://user:password@IP:PORT<br />
+                <br />
+                The URL of the proxy server.
+                </blockquote>
+          </li>
           <li><blockquote><b>use_slow_weapon_stats</b><br />
                 <i>False</i> - skip fetching weapon stats for new players<br />
                 <i>True</i> - fetch weapon stats for new players<br />

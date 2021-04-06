@@ -13679,6 +13679,7 @@ public interface DataDictionaryInterface
 
         WebClient client = null;
         WebProxy proxy = null;
+        String curAddress = "";
 
         public BattleLog(InsaneLimits plugin)
         {
@@ -13689,6 +13690,7 @@ public interface DataDictionaryInterface
         public void CleanUp()
         {
             client = null; // Release WebClient to avoid re-use error
+            proxy = null;
         }
 
 
@@ -13699,7 +13701,11 @@ public interface DataDictionaryInterface
                 // proxy support
                 if (plugin.getBooleanVarValue("use_battlelog_proxy")) {
                     // set proxy
-                    proxy = new WebProxy(plugin.getStringVarValue("proxy_url"), true);
+                    var address = plugin.getStringVarValue("proxy_url");
+                    if (proxy == null || !curAddress.Equals(address)) {
+                        proxy = new WebProxy(address, true);
+                        curAddress = address;
+                    }
                 }
                 else {
                     // proxy support is disabled clear the proxy

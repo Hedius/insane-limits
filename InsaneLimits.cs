@@ -3764,7 +3764,7 @@ namespace PRoConEvents
 
         public string GetPluginVersion()
         {
-            return "0.9.18.0";
+            return "0.9.18.1";
         }
 
         public string GetPluginAuthor()

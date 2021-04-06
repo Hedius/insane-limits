@@ -13709,21 +13709,16 @@ public interface DataDictionaryInterface
                 }
                 else {
                     // proxy support is disabled clear the proxy
-                    if (proxy != null) {
-                        proxy = null; 
-                        if (client != null) { 
-                            client.Proxy = null;
-                        }
-                    }
+                    proxy = null; 
                 }
                 if (client == null) {
                     client = new WebClient();
-                    client.Proxy = proxy;
                     String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)";
                     // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
                     plugin.DebugWrite("Using user-agent: " + ua, 4);
                     client.Headers.Add("user-agent", ua);
                 }
+                client.Proxy = proxy;
                 
                 DateTime since = DateTime.Now;
 

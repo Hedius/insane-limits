@@ -1214,6 +1214,7 @@ namespace PRoConEvents
                 this.booleanVariables.Add("use_white_list", false);
                 this.booleanVariables.Add("use_direct_fetch", true);
                 this.booleanVariables.Add("use_weapon_stats", false);
+                this.booleanVariables.Add("use_battlelog_proxy", false);
                 this.booleanVariables.Add("use_slow_weapon_stats", false);
                 this.booleanVariables.Add("use_stats_log", false);
                 this.booleanVariables.Add("use_custom_lists", false);
@@ -1229,7 +1230,7 @@ namespace PRoConEvents
                 this.booleanVariables.Add("tweet_my_plugin_state", true);
                 this.booleanVariables.Add("auto_hide_sections", true);
                 this.booleanVariables.Add("smtp_ssl", true);
-
+                
                 this.hidden_variables.Add("use_weapon_stats", true);
 
                 this.booleanVarValidators = new Dictionary<string, booleanVariableValidator>();
@@ -1240,6 +1241,7 @@ namespace PRoConEvents
                 this.booleanVarValidators.Add("use_white_list", booleanValidator);
                 this.booleanVarValidators.Add("use_direct_fetch", booleanValidator);
                 this.booleanVarValidators.Add("use_weapon_stats", booleanValidator);
+                this.booleanVarValidators.Add("use_battlelog_proxy", booleanValidator);
                 this.booleanVarValidators.Add("use_slow_weapon_stats", booleanValidator);
                 this.booleanVarValidators.Add("use_stats_log", booleanValidator);
                 this.booleanVarValidators.Add("use_custom_lists", booleanValidator);
@@ -1283,6 +1285,8 @@ namespace PRoConEvents
                 this.stringVariables.Add("smtp_account", "procon.insane.limits@gmail.com");
                 this.stringVariables.Add("smtp_mail", "procon.insane.limits@gmail.com");
                 this.stringVariables.Add("smtp_password", Decode("dG90YWxseWluc2FuZQ=="));
+
+                this.stringVariables.Add("proxy_url", "http://127.0.0.1:3128");
 
 
                 this.stringVariables.Add("twitter_verifier_pin", default_PIN_message);
@@ -1347,8 +1351,6 @@ namespace PRoConEvents
                 custom_stmp_group.Add("smtp_ssl");
                 settings_group.Add(MailG, custom_stmp_group);
 
-
-
                 List<String> custom_twitter_group = new List<string>();
                 custom_twitter_group.Add("twitter_setup_account");
                 custom_twitter_group.Add("twitter_reset_defaults");
@@ -1358,6 +1360,10 @@ namespace PRoConEvents
                 custom_twitter_group.Add("twitter_consumer_key");
                 custom_twitter_group.Add("twitter_consumer_secret");
                 settings_group.Add(TwitterG, custom_twitter_group);
+
+                List<String> proxy_group = new List<string>();
+                proxy_group.Add("proxy_url");
+                settings_group.Add(ProxyG, proxy_group);
 
                 List<String> privacy_policy = new List<string>();
                 privacy_policy.Add("tweet_my_server_bans");
@@ -1374,8 +1380,9 @@ namespace PRoConEvents
                 settings_group_order.Add(MailG, 4);
                 settings_group_order.Add(TwitterG, 5);
                 settings_group_order.Add(StorageG, 6);
-                settings_group_order.Add(ListManagerG, 7);
-                settings_group_order.Add(LimitManagerG, 8);
+                settings_group_order.Add(ProxyG, 7);
+                settings_group_order.Add(ListManagerG, 8);
+                settings_group_order.Add(LimitManagerG, 9);
 
                 /* Exported Variables are those that should live in the *conf file */
                 exported_variables.Add("tweet_my_server_bans");
@@ -7389,6 +7396,7 @@ public interface DataDictionaryInterface
         public const String StorageG = "Custom Storage";
         public const String TwitterG = "Custom Twitter";
         public const String SettingsG = "Settings";
+        public const String ProxyG = "Proxy for HTTP Requests";
 
         public bool shouldSkipGroup(String name)
         {
@@ -7412,6 +7420,9 @@ public interface DataDictionaryInterface
                 return true;
 
             if (name.StartsWith(TwitterG) && !getBooleanVarValue("use_custom_twitter"))
+                return true;
+            
+            if (name.StartsWith(ProxyG) && !getBooleanVarValue("use_battlelog_proxy"))
                 return true;
 
 
@@ -13655,6 +13666,7 @@ public interface DataDictionaryInterface
         //private CookieContainer cookies = null;
 
         WebClient client = null;
+        WebProxy proxy = null;
 
         public BattleLog(InsaneLimits plugin)
         {
@@ -13672,8 +13684,23 @@ public interface DataDictionaryInterface
         {
             try
             {
+                // proxy support
+                if (plugin.getBooleanVarValue("use_battlelog_proxy")) {
+                    // set proxy
+                    proxy = new WebProxy(plugin.getStringVarValue("proxy_url"), true);
+                }
+                else {
+                    // proxy support is disabled clear the proxy
+                    if (proxy != null) {
+                        proxy = null; 
+                        if (client != null) { 
+                            client.Proxy = null;
+                        }
+                    }
+                }
                 if (client == null) {
                     client = new WebClient();
+                    client.Proxy = proxy;
                     String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)";
                     // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
                     plugin.DebugWrite("Using user-agent: " + ua, 4);
@@ -13703,6 +13730,7 @@ public interface DataDictionaryInterface
             catch (WebException e)
             {
                 client = null; // release WebClient
+                proxy = null;
                 if (e.Status.Equals(WebExceptionStatus.Timeout)) {
                     StatsException se = new StatsException("HTTP request timed-out");
                     se.web_exception = e;
@@ -13714,6 +13742,7 @@ public interface DataDictionaryInterface
             catch (Exception ae)
             {
                 client = null; // release WebClient
+                proxy = null;
                 throw ae;
             }
             //return html_data;

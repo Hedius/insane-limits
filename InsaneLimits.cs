@@ -1,5 +1,5 @@
 /*
- * Copyright 2011 Miguel Mendoza - miguel@micovery.com, PapaCharlie9, Singh400, EBastard
+ * Copyright 2011 Miguel Mendoza - miguel@micovery.com, PapaCharlie9, Singh400, EBastard, Hedius
  *
  * Insane Balancer is free software: you can redistribute it and/or modify it under the terms of the
  * GNU General Public License as published by the Free Software Foundation, either version 3 of the License,
@@ -3764,7 +3764,7 @@ namespace PRoConEvents
 
         public string GetPluginVersion()
         {
-            return "0.9.17.0";
+            return "0.9.18.0";
         }
 
         public string GetPluginAuthor()

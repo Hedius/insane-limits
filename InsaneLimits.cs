@@ -13701,10 +13701,15 @@ public interface DataDictionaryInterface
                 // proxy support
                 if (plugin.getBooleanVarValue("use_battlelog_proxy")) {
                     // set proxy
-                    var address = plugin.getStringVarValue("proxy_url");
-                    if (proxy == null || !curAddress.Equals(address)) {
-                        proxy = new WebProxy(address, true);
-                        curAddress = address;
+                    try {
+                        var address = plugin.getStringVarValue("proxy_url");
+                        if (proxy == null || !curAddress.Equals(address)) {
+                            proxy = new WebProxy(address, true);
+                            curAddress = address;
+                        }
+                    }
+                    catch (UriFormatException) {
+                        plugin.ConsoleError("Invalid Proxy URL set!");
                     }
                 }
                 else {

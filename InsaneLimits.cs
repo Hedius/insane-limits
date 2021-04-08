@@ -30,7 +30,6 @@ using System.Reflection;
 using Microsoft.CSharp;
 using System.CodeDom;
 
-
 using PRoCon.Core;
 using PRoCon.Core.Plugin;
 using PRoCon.Core.Plugin.Commands;
@@ -13677,9 +13676,19 @@ public interface DataDictionaryInterface
         //private HttpWebRequest req = null;
         //private CookieContainer cookies = null;
 
-        WebClient client = null;
+        GZipWebClient client = null;
         WebProxy proxy = null;
         String curAddress = "";
+        
+        public class GZipWebClient : WebClient 
+        {
+            protected override WebRequest GetWebRequest(Uri address)
+            {
+                HttpWebRequest request = (HttpWebRequest)base.GetWebRequest(address);
+                request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+                return request;
+            }
+        }
 
         public BattleLog(InsaneLimits plugin)
         {
@@ -13717,7 +13726,7 @@ public interface DataDictionaryInterface
                     proxy = null; 
                 }
                 if (client == null) {
-                    client = new WebClient();
+                    client = new GZipWebClient();
                     String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)";
                     // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
                     plugin.DebugWrite("Using user-agent: " + ua, 4);

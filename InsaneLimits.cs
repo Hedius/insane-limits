@@ -13680,12 +13680,18 @@ public interface DataDictionaryInterface
         WebProxy proxy = null;
         String curAddress = "";
         
-        public class GZipWebClient : WebClient 
-        {
+        public class GZipWebClient : WebClient {
+            private String ua;
+
+            public GZipWebClient(String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)") {
+                this.ua = ua;
+                base.Headers["User-Agent"] = ua;
+            }
             protected override WebRequest GetWebRequest(Uri address)
             {
                 HttpWebRequest request = (HttpWebRequest)base.GetWebRequest(address);
                 request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+                request.UserAgent = ua;
                 return request;
             }
         }
@@ -13726,11 +13732,10 @@ public interface DataDictionaryInterface
                     proxy = null; 
                 }
                 if (client == null) {
-                    client = new GZipWebClient();
                     String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)";
+                    client = new GZipWebClient(ua);
                     // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
                     plugin.DebugWrite("Using user-agent: " + ua, 4);
-                    client.Headers["User-Agent"] = ua;
                 }
                 client.Proxy = proxy;
                 

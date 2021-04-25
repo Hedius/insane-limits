@@ -13706,12 +13706,21 @@ public interface DataDictionaryInterface
                 
                 var contentEncoding = ResponseHeaders[HttpResponseHeader.ContentEncoding];
                 base.Headers.Remove(HttpRequestHeader.AcceptEncoding);
-                
+
+                Stream decompressedStream = null;
+                StreamReader reader = null;
                 if (!string.IsNullOrEmpty(contentEncoding) && contentEncoding.ToLower().Contains("gzip")) {
-                    stream = new GZipStream(stream, CompressionMode.Decompress);
+                    decompressedStream = new GZipStream(stream, CompressionMode.Decompress);
+                    reader = new StreamReader(decompressedStream);
                 }
-                var reader = new StreamReader(stream);
-                return reader.ReadToEnd();
+                else {
+                    reader = new StreamReader(stream);
+                }
+                var data =  reader.ReadToEnd();
+                reader.Close();
+                decompressedStream?.Close();
+                stream.Close();
+                return data;
             }
             
             public void SetProxy(String proxyURL)

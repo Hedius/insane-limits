@@ -13761,7 +13761,7 @@ public interface DataDictionaryInterface
                     // set proxy
                     try {
                         var address = plugin.getStringVarValue("proxy_url");
-                        if (!curAddress.Equals(address)) {
+                        if (curAddress == null || !curAddress.Equals(address)) {
                             client.SetProxy(address); 
                             curAddress = address;
                         }

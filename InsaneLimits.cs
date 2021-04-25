@@ -13683,7 +13683,7 @@ public interface DataDictionaryInterface
             private String ua;
             private bool compress;
 
-            public GZipWebClient(String ua = "Mozilla/5.0 (compatible; PRoCon 1; AdKats)", bool compress = true) {
+            public GZipWebClient(String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)", bool compress = true) {
                 this.ua = ua;
                 this.compress = compress;
                 base.Headers["User-Agent"] = ua;
@@ -13742,6 +13742,7 @@ public interface DataDictionaryInterface
         public void CleanUp()
         {
             client = null; // Release WebClient to avoid re-use error
+            curAddress = "";
         }
 
         private String fetchWebPage(ref String html_data, String url)
@@ -13761,7 +13762,7 @@ public interface DataDictionaryInterface
                     // set proxy
                     try {
                         var address = plugin.getStringVarValue("proxy_url");
-                        if (curAddress == null || !curAddress.Equals(address)) {
+                        if (curAddress == null || client.Proxy == null || !curAddress.Equals(address)) {
                             client.SetProxy(address); 
                             curAddress = address;
                         }

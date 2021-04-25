@@ -29,7 +29,7 @@ using System.CodeDom.Compiler;
 using System.Reflection;
 using Microsoft.CSharp;
 using System.CodeDom;
-
+using System.IO.Compression;
 using PRoCon.Core;
 using PRoCon.Core.Plugin;
 using PRoCon.Core.Plugin.Commands;
@@ -13676,25 +13676,62 @@ public interface DataDictionaryInterface
         //private HttpWebRequest req = null;
         //private CookieContainer cookies = null;
 
-        GZipWebClient client = null;
-        WebProxy proxy = null;
-        String curAddress = "";
+        private GZipWebClient client = null;
+        private String curAddress = "";
         
         public class GZipWebClient : WebClient {
             private String ua;
+            private bool compress;
 
-            public GZipWebClient(String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)") {
+            public GZipWebClient(String ua = "Mozilla/5.0 (compatible; PRoCon 1; AdKats)", bool compress = true) {
                 this.ua = ua;
+                this.compress = compress;
                 base.Headers["User-Agent"] = ua;
             }
-            protected override WebRequest GetWebRequest(Uri address)
-            {
-                HttpWebRequest request = (HttpWebRequest)base.GetWebRequest(address);
-                request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-                request.UserAgent = ua;
-                return request;
+
+            public string GZipDownloadString(string address) {
+                return this.GZipDownloadString(new Uri(address));
             }
-        }
+
+            public string GZipDownloadString(Uri address) {
+                base.Headers[HttpRequestHeader.UserAgent] = ua;
+                
+                if (compress == false)
+                    return base.DownloadString(address);
+                
+                base.Headers[HttpRequestHeader.AcceptEncoding] = "gzip";
+                var stream = this.OpenRead(address);
+                if (stream == null)
+                    return "";
+                
+                var contentEncoding = ResponseHeaders[HttpResponseHeader.ContentEncoding];
+                base.Headers.Remove(HttpRequestHeader.AcceptEncoding);
+                
+                if (!string.IsNullOrEmpty(contentEncoding) && contentEncoding.ToLower().Contains("gzip")) {
+                    stream = new GZipStream(stream, CompressionMode.Decompress);
+                }
+                var reader = new StreamReader(stream);
+                return reader.ReadToEnd();
+            }
+            
+            public void SetProxy(String proxyURL)
+            {
+                if(!String.IsNullOrEmpty(proxyURL))
+                {
+                    Uri uri = new Uri(proxyURL);
+                    this.Proxy = new WebProxy(proxyURL, true); 
+                    if (!String.IsNullOrEmpty(uri.UserInfo))
+                    {
+                        string[] parameters = uri.UserInfo.Split(':');
+                        if (parameters.Length < 2) 
+                        {
+                            return;
+                        }
+                        this.Proxy.Credentials = new NetworkCredential(parameters[0], parameters[1]);
+                    }
+                }
+            }
+        } 
 
         public BattleLog(InsaneLimits plugin)
         {
@@ -13705,21 +13742,27 @@ public interface DataDictionaryInterface
         public void CleanUp()
         {
             client = null; // Release WebClient to avoid re-use error
-            proxy = null;
         }
-
 
         private String fetchWebPage(ref String html_data, String url)
         {
             try
             {
+                if (client == null) {
+                    curAddress = null;
+                    String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)";
+                    client = new GZipWebClient(ua); 
+                    // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
+                    plugin.DebugWrite("Using user-agent: " + ua, 4);
+                }
+                
                 // proxy support
                 if (plugin.getBooleanVarValue("use_battlelog_proxy")) {
                     // set proxy
                     try {
                         var address = plugin.getStringVarValue("proxy_url");
-                        if (proxy == null || !curAddress.Equals(address)) {
-                            proxy = new WebProxy(address, true);
+                        if (!curAddress.Equals(address)) {
+                            client.SetProxy(address); 
                             curAddress = address;
                         }
                     }
@@ -13727,21 +13770,10 @@ public interface DataDictionaryInterface
                         plugin.ConsoleError("Invalid Proxy URL set!");
                     }
                 }
-                else {
-                    // proxy support is disabled clear the proxy
-                    proxy = null; 
-                }
-                if (client == null) {
-                    String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)";
-                    client = new GZipWebClient(ua);
-                    // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
-                    plugin.DebugWrite("Using user-agent: " + ua, 4);
-                }
-                client.Proxy = proxy;
                 
                 DateTime since = DateTime.Now;
 
-                html_data = client.DownloadString(url);
+                html_data = client.GZipDownloadString(url);
                 
                 /* TESTS
                 String testUrl = "http://status.savanttools.com/?code=";
@@ -13762,7 +13794,6 @@ public interface DataDictionaryInterface
             catch (WebException e)
             {
                 client = null; // release WebClient
-                proxy = null;
                 if (e.Status.Equals(WebExceptionStatus.Timeout)) {
                     StatsException se = new StatsException("HTTP request timed-out");
                     se.web_exception = e;
@@ -13774,7 +13805,6 @@ public interface DataDictionaryInterface
             catch (Exception ae)
             {
                 client = null; // release WebClient
-                proxy = null;
                 throw ae;
             }
             //return html_data;

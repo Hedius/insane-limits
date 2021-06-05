@@ -13682,11 +13682,15 @@ public interface DataDictionaryInterface
         public class GZipWebClient : WebClient {
             private String ua;
             private bool compress;
-
-            public GZipWebClient(String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)", bool compress = true) {
-                this.ua = ua;
-                this.compress = compress;
+            
+            public GZipWebClient() {
+                this.ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)";
                 base.Headers["User-Agent"] = ua;
+                compress = true;
+            }
+
+            public GZipWebClient(bool compress) : this() {
+                this.compress = compress;
             }
 
             public string GZipDownloadString(string address) {

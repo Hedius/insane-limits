@@ -4476,7 +4476,7 @@ public interface PluginInterface
 
     /* AdKats Tools */
     String GetAdKatsRole(String playerName);
-    List<String> GetAdKatsRoleMembers(String roleKey);
+    List&lt;String&gt; GetAdKatsRoleMembers(String roleKey);
 }
 </pre>
 

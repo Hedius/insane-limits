@@ -542,6 +542,8 @@ namespace PRoConEvents
         String LastChat { get; }   // text of the last chat sent by player
         bool Battlelog404 { get; } // True - Player has no PC Battlelog profile
         bool StatsError { get; }   // True - Error occurred while processing player stats
+        
+        String AdKatsRole { get;  }
 
 
         /* Whitelist information */
@@ -711,6 +713,10 @@ namespace PRoConEvents
         bool IsOtherPluginEnabled(String className, String methodName);
         void CallOtherPlugin(String className, String methodName, Hashtable parms);
         DateTime GetLastPluginDataUpdate(); // return timestamp for the last time InsaneLimits.UpdatePluginData() was called
+        
+        /* AdKats Tools */
+        String GetAdKatsRole(String playerName);
+        List<String> GetAdKatsRoleMembers(String roleName);
     }
 
 
@@ -1106,7 +1112,6 @@ namespace PRoConEvents
         Thread finalizer;
         Thread moving_thread;
 
-
         public Object players_mutex = new Object();
         public Object settings_mutex = new Object();
         public Object message_mutex = new Object();
@@ -1163,6 +1168,10 @@ namespace PRoConEvents
 
         DateTime timerSquad = DateTime.Now;
         DateTime timerVars = DateTime.Now;
+        
+        // AdKats Handling
+        private int? curRole = null;
+        public Dictionary<String, List<String>> AdkatsRoleMapping = new Dictionary<string, List<string>>();
 
         // BF4
         public String game_version = "BF3";
@@ -1253,9 +1262,6 @@ namespace PRoConEvents
                 this.booleanVarValidators.Add("privacy_policy_agreement", booleanValidator);
 
 
-
-
-
                 /* Floats */
                 this.floatVariables = new Dictionary<string, float>();
                 this.floatVariables.Add("say_interval", 0.05f);
@@ -1270,6 +1276,7 @@ namespace PRoConEvents
                 this.stringListVariables.Add("clan_white_list", @"clan1, clan2, clan3");
 
                 this.stringListVariables.Add("player_white_list", @"micovery, player2, player3");
+                this.stringListVariables.Add("adkats_roles_to_fetch", @"vip,admin");
 
 
                 /* Strings */
@@ -3763,7 +3770,7 @@ namespace PRoConEvents
 
         public string GetPluginVersion()
         {
-            return "0.9.18.1";
+            return "1.0.0.0";
         }
 
         public string GetPluginAuthor()
@@ -4203,6 +4210,7 @@ public interface KillReasonInterface
 <pre>
 public interface PlayerInfoInterface
 {
+    String AdKatsRole { get; }
     /* Online statistics (battlelog.battlefield.com) */
     double Rank { get; }
     double Kdr { get; }
@@ -4465,6 +4473,10 @@ public interface PluginInterface
     bool IsOtherPluginEnabled(String className, String methodName);
     void CallOtherPlugin(String className, String methodName, Hashtable parms);
     DateTime GetLastPluginDataUpdate(); // return timestamp for the last time InsaneLimits.UpdatePluginData() was called
+
+    /* AdKats Tools */
+    String GetAdKatsRole(String playerName);
+    List<String> GetAdKatsRoleMembers(String roleKey);
 }
 </pre>
 
@@ -4746,6 +4758,10 @@ public interface DataDictionaryInterface
                 For example: ""!stats micovery"" will print the player statistic for the current round in the plugin console. <br />
                 <br />
                 Note that plugin commands, are currently supported only inside ProCon, and not In-Game.
+                </blockquote>
+           </li>
+           <li><blockquote><strong>adkats_roles_to_fetch</strong><br />
+                <i>(string)</i> - List of adkats role keys to fetch. <br />
                 </blockquote>
            </li>
           <li><blockquote><b>rcon_to_battlelog_codes</b><br />
@@ -5711,6 +5727,8 @@ public interface DataDictionaryInterface
             getPlayersList();
             getPBPlayersList();
             getReservedSlotsList();
+            
+            RefreshAdKatsUsers();
 
             DelayedCompile(30);
 
@@ -5924,7 +5942,7 @@ public interface DataDictionaryInterface
                             DebugWrite("^4getting battlelog stats for ^b" + name + "^n, " + msg + "^0", 5);
                             since = DateTime.Now; // reset timer
                             PlayerInfo ptmp = plugin.blog.fetchStats(new PlayerInfo(plugin, info));
-
+                            
                             /* If there was a fetch error, remember for retry */
                             if (ptmp._web_exception != null) {
                                 // Adaptively increment
@@ -5975,6 +5993,8 @@ public interface DataDictionaryInterface
                                     retryInfo.Remove(name);
                                 }
                             }
+
+                            ptmp.AdKatsRole = GetAdKatsRole(ptmp.Name);
 
                             lock (players_mutex)
                             {
@@ -6131,6 +6151,95 @@ public interface DataDictionaryInterface
             }
 
         }
+
+        public string GetAdKatsRole(String playerName) {
+            foreach (var key in AdkatsRoleMapping.Keys) {
+                var members = AdkatsRoleMapping[key];
+                if (members.Contains(playerName))
+                    return key;
+            }
+
+            return "default_guest";
+        }
+
+        public List<String> GetAdKatsRoleMembers(String roleName) {
+            if (AdkatsRoleMapping.ContainsKey(roleName))
+                return AdkatsRoleMapping[roleName];
+            return new List<String>();
+        }
+
+        private void RefreshAdKatsUsers()
+        {
+            DebugWrite("Refreshing AdKats Users", 8);
+            if (!getPluginVars().Contains("adkats_roles_to_fetch"))
+            {
+                ConsoleError("Failed to refresh AdKats roles.");
+            }
+
+            var roles = getStringListVarValue("adkats_roles_to_fetch").ToArray();
+            if (roles.Length == 0)
+                return;
+            
+            // AdKats won't tell you the role name to fetch -> So will do this recursive until we are done = The handler calls this
+            if (curRole == null) {
+                curRole = 0;
+            } else if (curRole >= roles.Length - 1) {
+                // We are done abort the loop
+                curRole = null;
+                // refresh all cached players without locking them ahhh
+                /*
+                foreach (var player in players.Values) {
+                    player.AdKatsRole = GetAdKatsRole(player.Name);
+                }
+                */
+                return;
+            }
+            else {
+                curRole += 1;
+            }
+
+            var requestHashtable = new Hashtable {
+                {"caller_identity", GetType().Name},
+                {"response_class", GetType().Name},
+                {"response_method", "HandleAdKatsUsersResponse"},
+                {"response_requested", true},
+                {"source_name", GetType().Name},
+                {"user_role", roles[(int)curRole]},
+            };
+            ExecuteCommand("procon.protected.plugins.call", "AdKats", "FetchAuthorizedSoldiers", GetType().Name, JSON.JsonEncode(requestHashtable));
+        }
+        
+        public void HandleAdKatsUsersResponse(params string[] response)
+        {
+            // Parse data from adkats
+            if (response.Length != 2)
+                return;
+
+            var values = (Hashtable)JSON.JsonDecode(response[1]);
+
+            if (values["response_type"] as string != "FetchAuthorizedSoldiers")
+                return;
+
+            var val = values["response_value"] as string;
+
+            if (string.IsNullOrEmpty(val))
+                return;
+
+            string[] players = CPluginVariable.DecodeStringArray(val);
+
+            // Update DIC
+            String role = getStringListVarValue("adkats_roles_to_fetch").ToArray()[(int)curRole];
+            if (!AdkatsRoleMapping.ContainsKey(role))
+                AdkatsRoleMapping.Add(role, new List<string>());
+            else
+                AdkatsRoleMapping[role].Clear();
+            foreach (var player in players)
+                AdkatsRoleMapping[role].Add(player);
+            
+            // Fetch the next role
+            RefreshAdKatsUsers();
+        } 
+        
         public int getLineOffset(String haystack, String needle)
         {
             int start_line = 0;
@@ -7435,13 +7544,9 @@ public interface DataDictionaryInterface
             
             if (name.StartsWith(ProxyG) && !getBooleanVarValue("use_battlelog_proxy"))
                 return true;
-
-
+            
             if (name.StartsWith(PrivacyPolicyG) && !getBooleanVarValue("use_custom_privacy_policy"))
                 return true;
-
-
-
             return false;
         }
 
@@ -8697,7 +8802,11 @@ public interface DataDictionaryInterface
             getMapInfo();
         }
         public override void OnCurrentLevel(string mapFileName) { getMapInfo(); }
-        public override void OnLoadingLevel(string mapFileName, int roundsPlayed, int roundsTotal) { getMapInfo(); }
+
+        public override void OnLoadingLevel(string mapFileName, int roundsPlayed, int roundsTotal) {
+            getMapInfo();
+            RefreshAdKatsUsers();
+        }
         public override void OnLevelStarted()
         { 
             DebugWrite("Got ^bOnLevelStarted^n!", 8);
@@ -8707,6 +8816,7 @@ public interface DataDictionaryInterface
             DebugWrite("Got ^bOnLevelLoaded^n!", 8);
             level_loaded = true;
             getMapInfo();
+            RefreshAdKatsUsers();
             
             lock (moves_mutex) {
                 RecentMove.Clear();
@@ -15013,6 +15123,7 @@ public interface DataDictionaryInterface
         public int _averagePing = 0;
         public Queue<int> _pingQ = new Queue<int>();
         public double _idleTime = 0;
+        public String _adkats_role = "default_guest";
 
         public WeaponStatsDictionary W = null;
         public BattlelogWeaponStatsDictionary BWS = null;
@@ -15197,6 +15308,11 @@ public interface DataDictionaryInterface
         public bool Battlelog404 { get { return _battlelog404; } set { _battlelog404 = value; } }
         public bool StatsError { get { return _stats_error; } set { _stats_error = value; } }
 
+        public String AdKatsRole
+        {
+            get { return _adkats_role; }
+            set { _adkats_role = value; }
+        }
 
         /* Whitelist info */
         public bool inClanWhitelist { get { return plugin.isInClanWhitelist(Name); } }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2011 Miguel Mendoza - miguel@micovery.com, PapaCharlie9, Singh400, EBastard
+ * Copyright 2011 Miguel Mendoza - miguel@micovery.com, PapaCharlie9, Singh400, EBastard, Hedius
  *
  * Insane Balancer is free software: you can redistribute it and/or modify it under the terms of the
  * GNU General Public License as published by the Free Software Foundation, either version 3 of the License,
@@ -29,8 +29,7 @@ using System.CodeDom.Compiler;
 using System.Reflection;
 using Microsoft.CSharp;
 using System.CodeDom;
-
-
+using System.IO.Compression;
 using PRoCon.Core;
 using PRoCon.Core.Plugin;
 using PRoCon.Core.Plugin.Commands;
@@ -389,6 +388,8 @@ namespace PRoConEvents
         String Description { get; }
         String GameVersion { get; } // BF3 or BF4
 
+        bool AggressiveJoin { get; }
+
         /* var.* value that is updated every update_interval seconds */
         int BulletDamage { get; }
         bool FriendlyFire { get; }
@@ -502,6 +503,8 @@ namespace PRoConEvents
         int MaxPing { get; }
         int MinPing { get; }
         int MedianPing { get; }
+        string battlelogId { get; }
+        string platoonIds { get; }
         int AveragePing { get; }
         int Role { get; } // BF4: 0 = PLAYER, 1 = SPECTATOR, 2 = COMMANDER, 3 = MOBILE COMMANDER
 
@@ -711,6 +714,8 @@ namespace PRoConEvents
         /* External plugin support */
         bool IsOtherPluginEnabled(String className, String methodName);
         void CallOtherPlugin(String className, String methodName, Hashtable parms);
+	      void CallEventLogger(String playerName, String eventName, String msg);
+	      String CallJSONEncoder(Hashtable table);
         DateTime GetLastPluginDataUpdate(); // return timestamp for the last time InsaneLimits.UpdatePluginData() was called
     }
 
@@ -1052,6 +1057,9 @@ namespace PRoConEvents
         public Dictionary<string, Boolean> booleanVariables;
         public Dictionary<string, int> integerVariables;
 
+        public Dictionary<string, string> GlobalCachePlayerTags = new Dictionary<string, string>();
+        private List<String> MultiBalancerTagRequestList = new List<String>();
+
         public Dictionary<string, integerVariableValidator> integerVarValidators;
         public Dictionary<string, booleanVariableValidator> booleanVarValidators;
         public Dictionary<string, stringVariableValidator> stringVarValidators;
@@ -1137,6 +1145,7 @@ namespace PRoConEvents
         public Dictionary<String,String> cacheResponseTable;
         
         private bool isRoundReset = false;
+        public bool varAggressiveJoin = false;
         
         private int expectedPBCount = 0;
         
@@ -1214,7 +1223,7 @@ namespace PRoConEvents
                 this.booleanVariables.Add("use_white_list", false);
                 this.booleanVariables.Add("use_direct_fetch", true);
                 this.booleanVariables.Add("use_weapon_stats", false);
-                this.booleanVariables.Add("use_battlelog_proxy", false);
+                this.booleanVariables.Add("use_battlelog_proxy", false);                
                 this.booleanVariables.Add("use_slow_weapon_stats", false);
                 this.booleanVariables.Add("use_stats_log", false);
                 this.booleanVariables.Add("use_custom_lists", false);
@@ -1230,7 +1239,7 @@ namespace PRoConEvents
                 this.booleanVariables.Add("tweet_my_plugin_state", true);
                 this.booleanVariables.Add("auto_hide_sections", true);
                 this.booleanVariables.Add("smtp_ssl", true);
-                
+
                 this.hidden_variables.Add("use_weapon_stats", true);
 
                 this.booleanVarValidators = new Dictionary<string, booleanVariableValidator>();
@@ -1285,9 +1294,8 @@ namespace PRoConEvents
                 this.stringVariables.Add("smtp_account", "procon.insane.limits@gmail.com");
                 this.stringVariables.Add("smtp_mail", "procon.insane.limits@gmail.com");
                 this.stringVariables.Add("smtp_password", Decode("dG90YWxseWluc2FuZQ=="));
-
+                
                 this.stringVariables.Add("proxy_url", "http://127.0.0.1:3128");
-
 
                 this.stringVariables.Add("twitter_verifier_pin", default_PIN_message);
                 this.stringVariables.Add("twitter_consumer_key", default_twitter_consumer_key);
@@ -1351,6 +1359,8 @@ namespace PRoConEvents
                 custom_stmp_group.Add("smtp_ssl");
                 settings_group.Add(MailG, custom_stmp_group);
 
+
+
                 List<String> custom_twitter_group = new List<string>();
                 custom_twitter_group.Add("twitter_setup_account");
                 custom_twitter_group.Add("twitter_reset_defaults");
@@ -1360,7 +1370,7 @@ namespace PRoConEvents
                 custom_twitter_group.Add("twitter_consumer_key");
                 custom_twitter_group.Add("twitter_consumer_secret");
                 settings_group.Add(TwitterG, custom_twitter_group);
-
+                
                 List<String> proxy_group = new List<string>();
                 proxy_group.Add("proxy_url");
                 settings_group.Add(ProxyG, proxy_group);
@@ -3764,23 +3774,24 @@ namespace PRoConEvents
 
         public string GetPluginVersion()
         {
-            return "0.9.17.0";
+            return "1.0.2.0";
         }
 
         public string GetPluginAuthor()
         {
-            return "micovery";
+            return "micovery, maxdralle, Hedius";
         }
 
         public string GetPluginWebsite()
         {
-            return "www.insanegamersasylum.com";
+            return "gitlab.com/e4gl/InsaneLimits";
         }
 
 
         public string GetPluginDescription()
         {
             return @"... and other contributors.
+        <h2>Version 2018 (player.battlelogId, server.AggressiveJoin, MultiBalancer Tag Request)</h2><br /><br />
         <h2>Description</h2>
         This plugin is a customizable limits/rules enforcer. It allows you to setup and enforce limits based on player statistics, and server state. <br />
         <br />
@@ -4145,6 +4156,7 @@ public interface ServerInfoInterface
     int BulletDamage { get; }
     bool FriendlyFire { get; }
     int GunMasterWeaponsPreset { get; }
+    bool AggressiveJoin { get; }
     double IdleTimeout { get; } // seconds
     int SoldierHealth { get; }
     bool VehicleSpawnAllowed { get; }
@@ -4264,6 +4276,8 @@ public interface PlayerInfoInterface
     int MaxPing { get; }
     int MinPing { get; }
     int MedianPing { get; } // of the last five samples
+    string battlelogId { get; }
+    string platoonIds { get; }
     int AveragePing { get; } // of two to five samples
     int Role { get; } // BF4: 0 = PLAYER, 1 = SPECTATOR, 2 = COMMANDER, 3 = MOBILE COMMANDER
 
@@ -4465,6 +4479,9 @@ public interface PluginInterface
     /* External plugin support */
     bool IsOtherPluginEnabled(String className, String methodName);
     void CallOtherPlugin(String className, String methodName, Hashtable parms);
+    void CallEventLogger(String playerName, String eventName, String msg);
+    String CallJSONEncoder(Hashtable table);
+
     DateTime GetLastPluginDataUpdate(); // return timestamp for the last time InsaneLimits.UpdatePluginData() was called
 }
 </pre>
@@ -4686,6 +4703,19 @@ public interface DataDictionaryInterface
                 fail since the cache is not available and this setting is False.
                 </blockquote>
           </li>
+          <li><blockquote><b>use_battlelog_proxy</b><br />
+                <i>True</i> - Send requests to web services over a proxy.<br />
+                <i>False</i> - Do not use a proxy.<br />
+                <br />
+                </blockquote>
+          </li>
+          <li><blockquote><b>proxy_url</b><br />
+                <i>(string, url)</i> - Format: http://IP:PORT - http://user:password@IP:PORT<br />
+                <br />
+                The URL of the proxy server.
+                </blockquote>
+          </li>
+           
           <li><blockquote><b>use_slow_weapon_stats</b><br />
                 <i>False</i> - skip fetching weapon stats for new players<br />
                 <i>True</i> - fetch weapon stats for new players<br />
@@ -4985,6 +5015,7 @@ public interface DataDictionaryInterface
                 "OnCtfRoundTimeModifier",
                 /* on update_interval get: */
                 "OnBulletDamage",
+                "OnReservedSlotsListAggressiveJoin",
                 "OnFriendlyFire",
                 "OnGunMasterWeaponsPreset",
                 "OnIdleTimeout",
@@ -5717,7 +5748,7 @@ public interface DataDictionaryInterface
             {
                 DebugWrite("sleeping for " + sleep_time + " seconds, before compiling limits", 4);
                 Thread.Sleep(sleep_time * 1000);
-                CompileAll();
+                CompileAll(true);
 
             }));
 
@@ -7032,6 +7063,41 @@ public interface DataDictionaryInterface
         }
 
 
+public void GiveMePlayerTag(string pluginName, string pluginCall, string pname) {
+	if ((pname.Length < 3) || (pluginName.Length < 3) || (pluginCall.Length < 3)) return;
+
+	if (this.GlobalCachePlayerTags.ContainsKey(pname)) {
+		this.ExecuteCommand("procon.protected.plugins.call", pluginName, pluginCall, pname, this.GlobalCachePlayerTags[pname]); // xxxxxxxxxxxx
+		if (this.MultiBalancerTagRequestList.Contains(pname)) { this.MultiBalancerTagRequestList.Insert(0, pname); }
+	} else {
+		if (pluginName == "MULTIbalancer") {
+			if (!this.MultiBalancerTagRequestList.Contains(pname)) { this.MultiBalancerTagRequestList.Insert(0, pname); }
+		} else {
+			this.ExecuteCommand("procon.protected.plugins.call", pluginName, pluginCall, pname, "noData"); // xxxxxxxxxxxx
+		}
+	}
+	if (this.MultiBalancerTagRequestList.Count > 100) {
+		this.MultiBalancerTagRequestList.RemoveAt(this.MultiBalancerTagRequestList.Count-1);
+		this.MultiBalancerTagRequestList.RemoveAt(this.MultiBalancerTagRequestList.Count-1);
+	}
+}
+
+public void GlobalCacheAddTag(string pname, string pTag) {
+	if (pname.Length < 3) return;
+	if (pTag == String.Empty) {
+		this.GlobalCachePlayerTags[pname] = "noTag";
+	} else {
+		this.GlobalCachePlayerTags[pname] = pTag;
+	}
+	if (this.MultiBalancerTagRequestList.Contains(pname)) {
+		this.MultiBalancerTagRequestList.Remove(pname);
+		if (pTag == String.Empty) {
+			this.ExecuteCommand("procon.protected.plugins.call", "MULTIbalancer", "GiveMePlayerTag", pname, "noTag");
+		} else {
+			this.ExecuteCommand("procon.protected.plugins.call", "MULTIbalancer", "GiveMePlayerTag", pname, pTag);
+		}
+	}
+}
 
 
         public void OnPluginDisable()
@@ -7046,7 +7112,8 @@ public interface DataDictionaryInterface
                 round_over = false;
                 isRoundReset = false;
                 level_loaded = false;
-
+                this.GlobalCachePlayerTags.Clear();
+                this.MultiBalancerTagRequestList.Clear();
 
                 finalizer = new Thread(new ThreadStart(delegate()
                     {
@@ -8510,7 +8577,7 @@ public interface DataDictionaryInterface
                 if (pinfo == null) return;
 
                 /* nothing to do, usually happens during join */
-                if (pinfo.TeamId == 0 || pinfo.TeamId == TeamId) return;
+				if (pinfo.TeamId == 0 || pinfo.TeamId == TeamId) return;
                 
                 /* if between rounds before first spawn, ignore */
                 if (round_over) {
@@ -8812,6 +8879,8 @@ public interface DataDictionaryInterface
 
             DebugWrite("Round HAS BEEN reset!", 8);
             isRoundReset = true;
+            // fix for linux?
+            // DelayedCompile(46);
         }
 
         public void getMapList()
@@ -9817,6 +9886,8 @@ public interface DataDictionaryInterface
             updateQueues(lstPlayers);
             SyncPlayersList(lstPlayers);
             UpdateExtraInfo(lstPlayers);
+//(fGameVersion != GameVersion.BF3) //xxxxxxxxxxxxxxxxx
+
         }
 
 
@@ -12586,7 +12657,8 @@ public interface DataDictionaryInterface
             else if (duration.Equals(EABanDuration.Permanent))
                 suffix = "(" + EABanDuration.Permanent.ToString() + ")";
 
-            String ea_message = message + suffix;
+//            String ea_message = message + suffix;
+            String ea_message = message;
 
             int max_length = 80;
             if (ea_message.Length > max_length)
@@ -13151,6 +13223,16 @@ public interface DataDictionaryInterface
             }
         }
 
+	public void CallEventLogger(String playerName, String eventName, String msg){
+        DebugWrite("Logging: ^b playerName:" + playerName + ", eventName: " + eventName + "^, msg: " + msg, 5);
+		    this.ExecuteCommand("procon.protected.plugins.call", "EventLogger", "SqlLog", eventName, playerName, msg);
+	}
+
+	public String CallJSONEncoder(Hashtable table){
+		return JSON.JsonEncode(table);
+	}
+
+
         public DateTime GetLastPluginDataUpdate() // return timestamp for the last time InsaneLimits.UpdatePluginData() was called
         {
             return last_data_change;
@@ -13553,6 +13635,10 @@ public interface DataDictionaryInterface
             resetUpdateTimer(WhichTimer.Vars);
         }
 
+        public override void OnReservedSlotsListAggressiveJoin(bool isEnabled) {
+            this.varAggressiveJoin = isEnabled;
+        }
+
         public override void OnFriendlyFire(bool isEnabled)
         {
             DebugWrite("Got ^bOnFriendlyFire^n: " + isEnabled, 8);
@@ -13665,8 +13751,71 @@ public interface DataDictionaryInterface
         //private HttpWebRequest req = null;
         //private CookieContainer cookies = null;
 
-        WebClient client = null;
-        WebProxy proxy = null;
+        private GZipWebClient client = null;
+        private String curAddress = "";
+        
+        public class GZipWebClient : WebClient {
+            private String ua;
+            private bool compress;
+
+            public GZipWebClient(String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)", bool compress = true) {
+                this.ua = ua;
+                this.compress = compress;
+                base.Headers["User-Agent"] = ua;
+            }
+
+            public string GZipDownloadString(string address) {
+                return this.GZipDownloadString(new Uri(address));
+            }
+
+            public string GZipDownloadString(Uri address) {
+                base.Headers[HttpRequestHeader.UserAgent] = ua;
+                
+                if (compress == false)
+                    return base.DownloadString(address);
+                
+                base.Headers[HttpRequestHeader.AcceptEncoding] = "gzip";
+                var stream = this.OpenRead(address);
+                if (stream == null)
+                    return "";
+                
+                var contentEncoding = ResponseHeaders[HttpResponseHeader.ContentEncoding];
+                base.Headers.Remove(HttpRequestHeader.AcceptEncoding);
+
+                Stream decompressedStream = null;
+                StreamReader reader = null;
+                if (!string.IsNullOrEmpty(contentEncoding) && contentEncoding.ToLower().Contains("gzip")) {
+                    decompressedStream = new GZipStream(stream, CompressionMode.Decompress);
+                    reader = new StreamReader(decompressedStream);
+                }
+                else {
+                    reader = new StreamReader(stream);
+                }
+                var data =  reader.ReadToEnd();
+                reader.Close();
+                decompressedStream?.Close();
+                stream.Close();
+                return data;
+            }
+            
+            public void SetProxy(String proxyURL)
+            {
+                if(!String.IsNullOrEmpty(proxyURL))
+                {
+                    Uri uri = new Uri(proxyURL);
+                    this.Proxy = new WebProxy(proxyURL, true); 
+                    if (!String.IsNullOrEmpty(uri.UserInfo))
+                    {
+                        string[] parameters = uri.UserInfo.Split(':');
+                        if (parameters.Length < 2) 
+                        {
+                            return;
+                        }
+                        this.Proxy.Credentials = new NetworkCredential(parameters[0], parameters[1]);
+                    }
+                }
+            }
+        } 
 
         public BattleLog(InsaneLimits plugin)
         {
@@ -13677,39 +13826,39 @@ public interface DataDictionaryInterface
         public void CleanUp()
         {
             client = null; // Release WebClient to avoid re-use error
+            curAddress = "";
         }
-
 
         private String fetchWebPage(ref String html_data, String url)
         {
             try
             {
+                if (client == null) {
+                    curAddress = null;
+                    String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)";
+                    client = new GZipWebClient(ua); 
+                    // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
+                    plugin.DebugWrite("Using user-agent: " + ua, 4);
+                }
+                
                 // proxy support
                 if (plugin.getBooleanVarValue("use_battlelog_proxy")) {
                     // set proxy
-                    proxy = new WebProxy(plugin.getStringVarValue("proxy_url"), true);
-                }
-                else {
-                    // proxy support is disabled clear the proxy
-                    if (proxy != null) {
-                        proxy = null; 
-                        if (client != null) { 
-                            client.Proxy = null;
+                    try {
+                        var address = plugin.getStringVarValue("proxy_url");
+                        if (curAddress == null || client.Proxy == null || !curAddress.Equals(address)) {
+                            client.SetProxy(address); 
+                            curAddress = address;
                         }
                     }
-                }
-                if (client == null) {
-                    client = new WebClient();
-                    client.Proxy = proxy;
-                    String ua = "Mozilla/5.0 (compatible; PRoCon 1; Insane Limits)";
-                    // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
-                    plugin.DebugWrite("Using user-agent: " + ua, 4);
-                    client.Headers.Add("user-agent", ua);
+                    catch (UriFormatException) {
+                        plugin.ConsoleError("Invalid Proxy URL set!");
+                    }
                 }
                 
                 DateTime since = DateTime.Now;
 
-                html_data = client.DownloadString(url);
+                html_data = client.GZipDownloadString(url);
                 
                 /* TESTS
                 String testUrl = "http://status.savanttools.com/?code=";
@@ -13730,7 +13879,6 @@ public interface DataDictionaryInterface
             catch (WebException e)
             {
                 client = null; // release WebClient
-                proxy = null;
                 if (e.Status.Equals(WebExceptionStatus.Timeout)) {
                     StatsException se = new StatsException("HTTP request timed-out");
                     se.web_exception = e;
@@ -13742,7 +13890,6 @@ public interface DataDictionaryInterface
             catch (Exception ae)
             {
                 client = null; // release WebClient
-                proxy = null;
                 throw ae;
             }
             //return html_data;
@@ -13858,6 +14005,7 @@ public interface DataDictionaryInterface
                 /* First fetch the player's main page to get the persona id */
                 
                 bool okClanTag = false;
+                string tmp_platoonIDs = String.Empty;
                 if (cacheEnabled) {
                     /* Get clan tag from cache */
                     fetchJSON(ref result, null, player, "clanTag");
@@ -13875,7 +14023,14 @@ public interface DataDictionaryInterface
                         throw new StatsException("JSON clanTag response does not contain a ^bclanTag^n field, for " + player);
 
                     String t = (String)d["clanTag"];
-                    if (!String.IsNullOrEmpty(t)) pinfo.tag = t;
+                    if (!String.IsNullOrEmpty(t)) {
+                        pinfo.tag = t;
+                        if (t == String.Empty) {
+                            //plugin.GlobalCachePlayerTags[pinfo.Name] = "noTag";
+                        } else {
+                            //plugin.GlobalCachePlayerTags[pinfo.Name] = t;
+                        }
+                    }
                     okClanTag = true;
                 }
 
@@ -13902,16 +14057,25 @@ public interface DataDictionaryInterface
 
                     /* Extract the persona id */
                     MatchCollection pid = null;
+                    MatchCollection tmp_platoon1 = null;
                     Match spid = null;
-                    
+
                     if (plugin.game_version == "BFHL") {
                         spid = Regex.Match(result, @"agent\/" + player + @"\/stats\/(\d+)");
                     } else if (plugin.game_version == "BF4") {
                         pid = Regex.Matches(result, @"bf4/soldier/" + player + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+                        //tmp_platoon1 = Regex.Matches(result, @"battlelog.battlefield.com/bf4/platoons/view/(\d+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
                     } else {
                         pid = Regex.Matches(result, @"bf3/soldier/" + player + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
                     }
 
+                    //if (tmp_platoon1.Count > 0) {
+                    //    foreach (Match matchx in tmp_platoon1) {
+                         //   if (matchx.Success) {
+                     //           tmp_platoonIDs = tmp_platoonIDs + matchx.Groups[1].ToString() + ";";
+                        //    }
+                    //    }
+                    //}
                     if (spid == null) {
                         foreach (Match match in pid)
                             if (match.Success && !Regex.Match(match.Groups[2].Value.Trim(), @"(ps3|xbox)", RegexOptions.IgnoreCase).Success) {
@@ -13946,9 +14110,11 @@ public interface DataDictionaryInterface
                         if (String.IsNullOrEmpty(bfhTag)) {
                             // No tag
                             pinfo.tag = String.Empty;
+                            //plugin.GlobalCachePlayerTags[pinfo.Name] = "noTag";
                             plugin.DebugWrite("^4Battlelog says ^b" + player + "^n has no BFHL tag", 5);
                         } else {
                             pinfo.tag = bfhTag;
+                            //plugin.GlobalCachePlayerTags[pinfo.Name] = bfhTag;
                         }
                     } else if (plugin.game_version == "BF4") {
 
@@ -13979,6 +14145,7 @@ public interface DataDictionaryInterface
                         if (!data.ContainsKey("viewedPersonaInfo") || (info = (Hashtable)data["viewedPersonaInfo"]) == null) {
                             // No tag
                             pinfo.tag = String.Empty;
+                            //plugin.GlobalCachePlayerTags[pinfo.Name] = "noTag";
                             plugin.DebugWrite("Battlelog says ^b" + player + "^n has no BF4 tag (no viewedPersonaInfo)", 5);
                         } else {
                             // Extract the player tag
@@ -13986,15 +14153,26 @@ public interface DataDictionaryInterface
                             if (!info.ContainsKey("tag") || String.IsNullOrEmpty(bf4Tag = (String)info["tag"])) {
                                 // No tag
                                 pinfo.tag = String.Empty;
+                                //plugin.GlobalCachePlayerTags[pinfo.Name] = "noTag";
                                 plugin.DebugWrite("^4Battlelog says ^b" + player + "^n has no BF4 tag", 5);
                             } else {
                                 pinfo.tag = bf4Tag;
+                                //plugin.GlobalCachePlayerTags[pinfo.Name] = bf4Tag;
                             }
                         }
                     } else {
                         extractClanTag(result, pinfo);
                     }
-                } 
+                }
+
+                //if (pinfo.tag == String.Empty) {
+                //    plugin.GlobalCachePlayerTags[pinfo.Name] = "noTag";
+                //} else {
+                //    plugin.GlobalCachePlayerTags[pinfo.Name] = pinfo.tag;
+                //}
+                plugin.GlobalCacheAddTag(pinfo.Name, pinfo.tag);
+                pinfo.battlelogId = personaId.ToString();
+                pinfo.platoonIds = tmp_platoonIDs;
 
                 /* Next, get player's overview stats */
                 
@@ -14361,8 +14539,14 @@ public interface DataDictionaryInterface
         {
             /* Extract the player tag */
             Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*" + pinfo.Name, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            if (tag.Success)
+            if (tag.Success) {
                 pinfo.tag = tag.Groups[1].Value;
+                if (tag.Groups[1].Value == String.Empty) {
+                    plugin.GlobalCacheAddTag(pinfo.Name, "noTag");
+                } else {
+                    plugin.GlobalCacheAddTag(pinfo.Name, tag.Groups[1].Value);
+                }
+            }
         }
 
         public List<Dictionary<String, String>> buildKitMaps(Hashtable kitMap)
@@ -14680,6 +14864,7 @@ public interface DataDictionaryInterface
         /* var.* value that is updated every update_interval seconds */
         public int BulletDamage { get { return plugin.varBulletDamage; } }
         public bool FriendlyFire { get { return plugin.varFriendlyFire; } }
+        public bool AggressiveJoin { get { return plugin.varAggressiveJoin; } }
         public int GunMasterWeaponsPreset { get { return plugin.varGunMasterWeaponsPreset; } }
         public double IdleTimeout { get { return plugin.varIdleTimeout; } } // seconds
         public int SoldierHealth { get { return plugin.varSoldierHealth; } }
@@ -14936,6 +15121,8 @@ public interface DataDictionaryInterface
         public int _maxPing = 0;
         public int _minPing = 0;
         public int _medianPing = 0;
+        public string _battlelogId = String.Empty;
+        public string _platoonIds = String.Empty;
         public int _averagePing = 0;
         public Queue<int> _pingQ = new Queue<int>();
         public double _idleTime = 0;
@@ -15056,6 +15243,8 @@ public interface DataDictionaryInterface
         public int MaxPing { get { return _maxPing; } set { _maxPing = value; } }
         public int MinPing { get { return _minPing; } set { _minPing = value; } }
         public int MedianPing { get { return _medianPing; } set { _medianPing = value; } }
+        public string battlelogId { get { return _battlelogId; } set { _battlelogId = value; } }
+        public string platoonIds { get { return _platoonIds; } set { _platoonIds = value; } }
         public int AveragePing { get { return _averagePing; } set { _averagePing = value; } }
         public int Role { get { return info.Type; } }
 

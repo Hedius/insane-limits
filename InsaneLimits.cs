@@ -335,6 +335,7 @@ namespace PRoConEvents
         int TotalRounds { get; }
         int PlayerCount { get; }
         int MaxPlayers { get; }
+        int UptimeSeconds { get;  }
 
         /* Current Map Data */
         int MapIndex { get; }
@@ -412,7 +413,6 @@ namespace PRoConEvents
 
         double StartTickets(int TeamId);         // tickets at the begining of round for specified team
         double TargetTickets { get; }            // tickets needed to win
-
 
         int OppositeTeamId(int TeamId);
         int WinTeamId { get; } //id of the team that won previous round
@@ -3781,7 +3781,7 @@ namespace PRoConEvents
 
         public string GetPluginVersion()
         {
-            return "1.0.3.0";
+            return "1.0.4.0";
         }
 
         public string GetPluginAuthor()
@@ -3791,7 +3791,7 @@ namespace PRoConEvents
 
         public string GetPluginWebsite()
         {
-            return "gitlab.com/e4gl/InsaneLimits";
+            return "github.com/hedius/InsaneLimits";
         }
 
 
@@ -4108,6 +4108,7 @@ public interface ServerInfoInterface
     int TotalRounds { get; }
     int PlayerCount { get; }
     int MaxPlayers { get; }
+    int UptimeSeconds { get; }
 
     /* Current Map Data */
     int MapIndex { get; }
@@ -5886,6 +5887,8 @@ public interface DataDictionaryInterface
                         fetch_handle.Reset();
                         DebugWrite("awake!, block ^benforcer^n thread", 7);
                     }
+
+                    RefreshAdKatsUsers();
 
                     while (GetQCount() > 0)
                     {
@@ -8860,7 +8863,6 @@ public void GlobalCacheAddTag(string pname, string pTag) {
 
         public override void OnLoadingLevel(string mapFileName, int roundsPlayed, int roundsTotal) {
             getMapInfo();
-            RefreshAdKatsUsers();
         }
         public override void OnLevelStarted()
         { 
@@ -8871,7 +8873,6 @@ public void GlobalCacheAddTag(string pname, string pTag) {
             DebugWrite("Got ^bOnLevelLoaded^n!", 8);
             level_loaded = true;
             getMapInfo();
-            RefreshAdKatsUsers();
             
             lock (moves_mutex) {
                 RecentMove.Clear();
@@ -14812,6 +14813,9 @@ public void GlobalCacheAddTag(string pname, string pTag) {
         public Dictionary<String, double> svalue;
         public Dictionary<String, double> rvalue;
 
+        // assume 1h during startup
+        public DateTime ServerStartTime = DateTime.UtcNow.AddSeconds(-3600);
+
         [A("map")]
         public int CurrentRound { get { return data.CurrentRound; } }
         [A("map")]
@@ -14876,6 +14880,8 @@ public void GlobalCacheAddTag(string pname, string pTag) {
         [A("total")]
         public int MaxPlayers { get { return data.MaxPlayerCount; } }
 
+        // scope that
+        public int UptimeSeconds { get { return (int)(DateTime.UtcNow - this.ServerStartTime).TotalSeconds; } }
 
         public WeaponStatsInterface this[String WeaponName] { get { return W[WeaponName]; } }
         public DataDictionaryInterface Data { get { return (DataDictionaryInterface)DataDict; } }
@@ -15091,6 +15097,7 @@ public void GlobalCacheAddTag(string pname, string pTag) {
             foreach (TeamScore ts in scores)
                 if (ts != null && _StartTickets.ContainsKey(ts.TeamID) && Double.IsNaN(_StartTickets[ts.TeamID]))
                     _StartTickets[ts.TeamID] = ts.Score;
+            this.ServerStartTime = DateTime.UtcNow.AddSeconds(-data.ServerUptime);
         }
 
         public void updateTickets(List<TeamScore> tickets)

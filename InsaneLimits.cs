@@ -716,10 +716,10 @@ namespace PRoConEvents
         /* External plugin support */
         bool IsOtherPluginEnabled(String className, String methodName);
         void CallOtherPlugin(String className, String methodName, Hashtable parms);
-	      void CallEventLogger(String playerName, String eventName, String msg);
-	      String CallJSONEncoder(Hashtable table);
+        void CallEventLogger(String playerName, String eventName, String msg);
+        String CallJSONEncoder(Hashtable table);
         DateTime GetLastPluginDataUpdate(); // return timestamp for the last time InsaneLimits.UpdatePluginData() was called
-        
+
         /* AdKats Tools */
         String GetAdKatsRole(String playerName);
         List<String> GetAdKatsRoleMembers(String roleName);
@@ -3791,7 +3791,7 @@ namespace PRoConEvents
 
         public string GetPluginWebsite()
         {
-            return "github.com/hedius/InsaneLimits";
+            return "github.com/hedius/insane-limits";
         }
 
 
@@ -7175,6 +7175,7 @@ public interface DataDictionaryInterface
 
 
 public void GiveMePlayerTag(string pluginName, string pluginCall, string pname) {
+    // used by e4gl/RNR balancer
 	if ((pname.Length < 3) || (pluginName.Length < 3) || (pluginCall.Length < 3)) return;
 
 	if (this.GlobalCachePlayerTags.ContainsKey(pname)) {
@@ -7194,6 +7195,7 @@ public void GiveMePlayerTag(string pluginName, string pluginCall, string pname) 
 }
 
 public void GlobalCacheAddTag(string pname, string pTag) {
+    // used by E4GL / RNR balancer
 	if (pname.Length < 3) return;
 	if (pTag == String.Empty) {
 		this.GlobalCachePlayerTags[pname] = "noTag";
